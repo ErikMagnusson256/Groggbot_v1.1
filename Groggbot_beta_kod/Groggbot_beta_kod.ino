@@ -8,6 +8,8 @@
 int rs=12, en=11, d4=5, d5=4, d6=3, d7=2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
+
+
 //defines
 #define btnRIGHT  0
 #define btnUP     1
@@ -21,7 +23,7 @@ int lcd_key     = 0;
 int adc_key_in  = 0;
 float logic_Hz = 1; //number of time each second that the logic of the program will execute
 float render_Hz = 0.5; //renders the display at this Hz
-float input_Hz = 10; //check input at this frequency
+float input_Hz = 5; //check input at this frequency
 
 //global variables
 long time_counter = 0;
@@ -30,7 +32,46 @@ long render_timer_counter = 0;
 long input_timer_counter = 0;
 int selected_button = btnNONE;
 
+//class representing the peristaltic pumps,
+//functions to turn off and on
+//LOW SIGNAL => PUMP ON
+class PerPump {
+  public:
+  int PIN_run;
 
+  void PumpON(){
+    
+    digitalWrite(PIN_run, LOW);
+
+  }
+
+  //turns off pump
+  void PumpOFF(){
+    digitalWrite(PIN_run, HIGH);
+    
+  }
+
+  //constructor
+  PerPump(int input_PIN_run){
+    
+    PIN_run = input_PIN_run;
+    pinMode(PIN_run, OUTPUT);
+    
+    PumpOFF(); //makes sure pump is in a known state in the beginning
+  }
+
+  //destructor, runs when "destroying" object
+  ~PerPump(){
+    digitalWrite(PIN_run, LOW); //makes sure pump is turned off when object is destoyed
+  }
+};
+
+PerPump pump1(7);
+PerPump pump2(8);
+PerPump pump3(9);
+PerPump pump4(10);
+
+PerPump pumps[] = {pump1, pump2, pump3, pump4}; 
 
 //global function
 int read_LCD_buttons()
@@ -126,6 +167,7 @@ bool incrementingValue = false; //true if user is currently incrementing a value
 
 
 bool NewMenu_logic(int inputButton){
+  //
 
   //inputbutton -> the latest button that has been pressed
   bool redraw_next_cycle = false;
@@ -195,14 +237,16 @@ bool NewMenu_logic(int inputButton){
     if(menuPos == 0 && verticalMenuPos == 1){
       //pour drink 1
       PourDrink(pump_amounts[0][0],pump_amounts[1][0],pump_amounts[2][0],pump_amounts[3][0]);
+      WaitForNoKeypress();
 
     } else  if(menuPos == 0 && verticalMenuPos == 2){
       //pour drink 2
       PourDrink(pump_amounts[0][1],pump_amounts[1][1],pump_amounts[2][1],pump_amounts[3][1]);
+      WaitForNoKeypress();
 
     }else if(menuPos == 0 && verticalMenuPos == 3){
       RandomGrogg();
-      delay(250);
+      WaitForNoKeypress();
     }
     break;
 
@@ -252,6 +296,7 @@ void NewMenu_draw(bool redraw){
 //takes over display
 void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
       //1. Draw new menu on display, user selects if to continue or not
+      WaitForNoKeypress();
 
       int cursor_position = 0;      
       bool done = false;
@@ -342,6 +387,7 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
         int current_weight = 0; //TODO READ SENSOR VALUE
 
         //TODO TURN PUMP[i] on
+        pumps[i].PumpON();
 
         while(pouring_drink){
         //read the loadcell data
@@ -366,7 +412,7 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
         pouring_drink = false;
       }
       
-      //TURN PUMP[i] off
+      pumps[i].PumpOFF();
       }
       
       
@@ -394,6 +440,7 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
 
 //randomizes a 
 void RandomGrogg(){
+      
       int cursor_position = 0;   
       
       bool done = false;
@@ -485,6 +532,15 @@ void RandomGrogg(){
       }
 }
 
+//function to clean pumps, promts user to connect hoses to a glass with water, place empty glass on drink slot
+//
+void CleanPumps(){
+  bool done = false;
+  while(!done){
+    //print text
+    
+  }
+}
 
 
 void HandleMenu(int inputButton){
@@ -558,7 +614,7 @@ void loop() {
     //HandleMenu(selected_button);
 
     bool temp = NewMenu_logic(selected_button);
-    NewMenu_draw(temp);
+    NewMenu_draw(true);
   }
 
   
