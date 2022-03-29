@@ -1,6 +1,7 @@
 //groggbot till SMART22 LuND 22
 
 #include <LiquidCrystal.h>
+#include <Q2HX711.h> //‘Queuetue HX711 Library’ 
 
 
 // select the pins used on the LCD panel
@@ -8,7 +9,17 @@
 int rs=12, en=11, d4=5, d5=4, d6=3, d7=2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
+const byte hx711_data_pin = 3;
+const byte hx711_clock_pin = 4;
 
+Q2HX711 hx711(hx711_data_pin, hx711_clock_pin); //load cell
+
+const float y1 = 200.0;
+int avg_size = 5;
+
+//used to calculate weight on loadcell through known values
+long x0 = 8844336;
+long x1 = 9046776;
 
 //defines
 #define btnRIGHT  0
@@ -24,6 +35,9 @@ int adc_key_in  = 0;
 float logic_Hz = 1; //number of time each second that the logic of the program will execute
 float render_Hz = 0.5; //renders the display at this Hz
 float input_Hz = 5; //check input at this frequency
+
+
+
 
 //global variables
 long time_counter = 0;
@@ -62,7 +76,7 @@ class PerPump {
 
   //destructor, runs when "destroying" object
   ~PerPump(){
-    digitalWrite(PIN_run, LOW); //makes sure pump is turned off when object is destoyed
+    PumpOFF(); //makes sure pump is turned off when object is destoyed
   }
 };
 
@@ -74,8 +88,7 @@ PerPump pump4(10);
 PerPump pumps[] = {pump1, pump2, pump3, pump4}; 
 
 //global function
-int read_LCD_buttons()
-{
+int read_LCD_buttons(){
  adc_key_in = analogRead(0);      // read the value from the sensor 
  //Serial.println(adc_key_in);
  // we add approx 50 to those values and check to see if we are close
@@ -91,8 +104,22 @@ int read_LCD_buttons()
 }
 
 //returns the current value of the loadcell and returns it
-int read_loadcell(){
+float read_weight_grams(){
+  long reading = 0;
 
+  //average the read value
+  for (int jj=0;jj<int(avg_size);jj++){
+    reading+=hx711.read();
+  }
+  reading/=long(avg_size);
+
+  // calculating mass based on calibration and linear fit and hardcoded values
+  float ratio_1 = (float) (reading-x0);
+  float ratio_2 = (float) (x1-x0);
+  float ratio = ratio_1/ratio_2;
+  float mass = y1*ratio;
+
+  return mass;
 }
 
 void PrintStartupScreen(){
@@ -247,6 +274,9 @@ bool NewMenu_logic(int inputButton){
     }else if(menuPos == 0 && verticalMenuPos == 3){
       RandomGrogg();
       WaitForNoKeypress();
+    }else if(menuPos == 3 && verticalMenuPos == 1){
+      CheckWeightSensor(); //TODO REMOVE
+
     }
     break;
 
@@ -266,7 +296,7 @@ String menuGUI[][4] = {{"MENU      Settings>", "POUR DRINK 1", "POUR DRINK 2", "
                               {"<P1   PUMP 2    P3>","Drink 1", "Drink 2", ""}, 
                               {"<P2   PUMP 3    P4>","Drink 1", "Drink 2", ""},
                               {"<P3   PUMP 4      >","Drink 1", "Drink 2", ""}, 
-                              {"<P4 Purge system", "Backa pumpar", "temp2", "temp3"}};
+                              {"<P4 Purge system", "Check weight sensor", "temp2", "temp3"}};
 
 void NewMenu_draw(bool redraw){
   //only redraw
@@ -373,7 +403,7 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
       
       WaitForNoKeypress();
       
-
+      //pour the drink itself, pour the 4 amounts
       int amounts[] = {amount_p2, amount_p2, amount_p3, amount_p4};
 
       for(int i = 0; i < 4; i++){
@@ -384,32 +414,36 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
         bool pouring_drink = true;
 
         //zero the loadcell value before each run
-        int current_weight = 0; //TODO READ SENSOR VALUE
+        float start_weight = read_weight_grams(); //read sensor data, in grams, zero value
 
-        //TODO TURN PUMP[i] on
+        float goal_weight = amounts[i]*10; //assume 1 cl = 10 grams
+        // TURN PUMP[i] on
         pumps[i].PumpON();
 
         while(pouring_drink){
-        //read the loadcell data
-        //TODO current_weight = 
-        
-        if(read_LCD_buttons() != btnNONE){
-          delay(150);
-          //TODO turn pump off
-          return;
+          float current_weight = read_weight_grams();
+
+          if(current_weight >= start_weight + current_weight){
+            pouring_drink = false;
+            pumps[i].PumpOFF();
+          }
+
+          //if user wants to abort pouring
+          if(read_LCD_buttons() != btnNONE){
+            pouring_drink = false;
+            pumps[i].PumpOFF();
+            i = 4;
+            delay(250);
+            return;
         }
 
-        //TODO PROPER WEIGHT SCALING
-        /*if(current_weight > amounts[i]*999){
-          //TODO turn pump off
-          pouring_drink = false; 
-        }     */   
+        
+      
 
         delay(50); //add some delay, let pump work for 50ms
         //
 
-        delay(1500);
-        pouring_drink = false;
+        
       }
       
       pumps[i].PumpOFF();
@@ -532,12 +566,45 @@ void RandomGrogg(){
       }
 }
 
+void CheckWeightSensor(){
+  bool done = false;
+  
+
+  while(!done){
+    float weight = read_weight_grams();
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Testing loadcell");
+    lcd.setCursor(0,1);
+    lcd.print("current weight:");
+    lcd.setCursor(0,2);
+    lcd.print(String(weight) + " grams!");
+    lcd.setCursor(0,3);
+    lcd.print("Press any key to exit");
+    
+
+    delay(100);
+
+    int key = read_LCD_buttons();
+
+    if(key != btnNONE){
+      done = true;
+      break;
+    }
+
+  }
+  lcd.clear();
+  delay(500);
+
+}
+
 //function to clean pumps, promts user to connect hoses to a glass with water, place empty glass on drink slot
 //
 void CleanPumps(){
   bool done = false;
   while(!done){
     //print text
+    done = true;
     
   }
 }
