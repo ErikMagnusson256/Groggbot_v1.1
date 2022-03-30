@@ -2,6 +2,7 @@
 
 #include <LiquidCrystal.h>
 #include <Q2HX711.h> //‘Queuetue HX711 Library’ 
+#include <EEPROM.h>
 
 
 // select the pins used on the LCD panel
@@ -17,9 +18,9 @@ Q2HX711 hx711(hx711_data_pin, hx711_clock_pin); //load cell
 const float y1 = 200.0;
 int avg_size = 5;
 
-//used to calculate weight on loadcell through known values
+//used to calculate weight on loadcell through known reference values
 long x0 = 8844336;
-long x1 = 9046776;
+long x1 = 9046776; //when y1 placed on loadcell, i.e 200 grams
 
 //defines
 #define btnRIGHT  0
@@ -121,6 +122,43 @@ float read_weight_grams(){
 
   return mass;
 }
+
+const int EEPROM_NR_DRINK_ADDRESS = 0; //the address where we start writing the long nr
+
+//CUSOM EEPROM functions to write a long into memmory
+// read double word from EEPROM, give starting address
+ unsigned long EEPROM_readlong(int address){
+ //use word read function for reading upper part
+ unsigned long dword = EEPROM_readint(address);
+ //shift read word up
+ dword = dword << 16;
+ // read lower word from EEPROM and OR it into double word
+ dword = dword | EEPROM_readint(address+2);
+ return dword;
+}
+
+//write word to EEPROM
+ void EEPROM_writeint(int address, int value) {
+ EEPROM.write(address,highByte(value));
+ EEPROM.write(address+1 ,lowByte(value));
+}
+
+ 
+ //write long integer into EEPROM
+ void EEPROM_writelong(int address, unsigned long value){
+ //truncate upper part and write lower part into EEPROM
+ EEPROM_writeint(address+2, word(value));
+ //shift upper part down
+ value = value >> 16;
+ //truncate and write
+ EEPROM_writeint(address, word(value));
+}
+
+unsigned int EEPROM_readint(int address) {
+ unsigned int word = word(EEPROM.read(address), EEPROM.read(address+1));
+ return word;
+}
+
 
 void PrintStartupScreen(){
    lcd.setCursor(0,1);
@@ -377,7 +415,7 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
           case btnSELECT:
           if(cursor_position == 0){
             //pressed exit
-            delay(50);            
+            delay(250);            
             return;
           }else if(cursor_position == 1){
             //pressed confirm, continue with pouring drink
@@ -411,15 +449,22 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
         lcd.setCursor(0,3);
         lcd.print("Pump " + String(i+1) + " active!");
 
-        bool pouring_drink = true;
+        
 
         //zero the loadcell value before each run
         float start_weight = read_weight_grams(); //read sensor data, in grams, zero value
 
         float goal_weight = amounts[i]*10; //assume 1 cl = 10 grams
+        if(goal_weight < 0){
+          goal_weight = 0;
+        }
+
+        if(goal_weight = 0){
+          break; //exit this iteration and go on to the next pump
+        }
         // TURN PUMP[i] on
         pumps[i].PumpON();
-
+        bool pouring_drink = true;
         while(pouring_drink){
           float current_weight = read_weight_grams();
 
@@ -428,7 +473,7 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
             pumps[i].PumpOFF();
           }
 
-          //if user wants to abort pouring
+          //if user wants to abort pouring, he or she has pressed a button
           if(read_LCD_buttons() != btnNONE){
             pouring_drink = false;
             pumps[i].PumpOFF();
@@ -437,12 +482,7 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
             return;
         }
 
-        
-      
-
         delay(50); //add some delay, let pump work for 50ms
-        //
-
         
       }
       
@@ -457,7 +497,16 @@ void PourDrink(int amount_p1, int amount_p2, int amount_p3, int amount_p4){
     lcd.print("Drink ready");
     lcd.setCursor(0,1);
 
-    int totalNumDrinks = 0; //TODO READ WRITE TO EEPROM to save total nr of drinks made by groggbot
+    
+    long totalNumDrinks = EEPROM_readlong(EEPROM_NR_DRINK_ADDRESS); //read nr of drinks made
+    long new_nr_drinks = totalNumDrinks + 1;
+    EEPROM_writelong(EEPROM_NR_DRINK_ADDRESS, new_nr_drinks); //update eeprom with new value
+
+    //TODO fun things, add counter for nr drinks this session, i.e since it was restarted
+    //if sesson drinks = 1, grattis du blandade din första grogg
+    //if session drinks > 10, ta en vatten
+    //if session drinks > 15 varanan vatten
+    //if session drinks > 25 .... etc etc
 
     lcd.print("Made " + String(totalNumDrinks) + " in total!");
     lcd.setCursor(0,2);
