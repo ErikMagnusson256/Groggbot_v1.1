@@ -5,9 +5,10 @@
 #include <EEPROM.h>
 
 
-// select the pins used on the LCD panel
+const int LED_PIN = 4;
 
-int rs=12, en=11, d4=5, d5=4, d6=3, d7=2;
+// select the pins used on the LCD panel
+int rs=13, en=12, d4=8, d5=9, d6=10, d7=11;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 const byte hx711_data_pin = 3;
@@ -56,13 +57,13 @@ class PerPump {
 
   void PumpON(){
     
-    digitalWrite(PIN_run, LOW);
+    digitalWrite(PIN_run, HIGH);
 
   }
 
   //turns off pump
   void PumpOFF(){
-    digitalWrite(PIN_run, HIGH);
+    digitalWrite(PIN_run, LOW);
     
   }
 
@@ -81,10 +82,15 @@ class PerPump {
   }
 };
 
-PerPump pump1(7);
-PerPump pump2(8);
-PerPump pump3(9);
-PerPump pump4(10);
+//define pump control pins, normally low
+const int PUMP1_PIN = 0;
+const int PUMP2_PIN = 1;
+const int PUMP3_PIN = 2;
+const int PUMP4_PIN = 4;
+PerPump pump1(PUMP1_PIN);
+PerPump pump2(PUMP2_PIN);
+PerPump pump3(PUMP3_PIN);
+PerPump pump4(PUMP4_PIN);
 
 PerPump pumps[] = {pump1, pump2, pump3, pump4}; 
 
@@ -127,6 +133,10 @@ const int EEPROM_NR_DRINK_ADDRESS = 0; //the address where we start writing the 
 
 //CUSOM EEPROM functions to write a long into memmory
 // read double word from EEPROM, give starting address
+unsigned int EEPROM_readint(int address) {
+ unsigned int word = word(EEPROM.read(address), EEPROM.read(address+1));
+ return word;
+}
  unsigned long EEPROM_readlong(int address){
  //use word read function for reading upper part
  unsigned long dword = EEPROM_readint(address);
@@ -154,10 +164,7 @@ const int EEPROM_NR_DRINK_ADDRESS = 0; //the address where we start writing the 
  EEPROM_writeint(address, word(value));
 }
 
-unsigned int EEPROM_readint(int address) {
- unsigned int word = word(EEPROM.read(address), EEPROM.read(address+1));
- return word;
-}
+
 
 
 void PrintStartupScreen(){
@@ -180,7 +187,13 @@ void PrintStartupScreen(){
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  
+  //int rs=13, en=12, d4=8, d5=9, d6=10, d7=11;
+  pinMode(rs, OUTPUT);
+  pinMode(en, OUTPUT);
+  pinMode(d4, OUTPUT);
+  pinMode(d5, OUTPUT);
+  pinMode(d6, OUTPUT);
+  pinMode(d7, OUTPUT);
 
   lcd.begin(20,4);              // start the library
   lcd.clear();
@@ -189,7 +202,7 @@ void setup() {
   randomSeed(analogRead(2)); //initates random seed for random nrs
 
   Serial.begin(115200);
-  Serial.println("test123");
+  //Serial.println("test123");
   
 }
 
